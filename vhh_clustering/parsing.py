@@ -6,7 +6,6 @@ handling both experimental and predicted structures (AlphaFold, Boltz).
 
 from __future__ import annotations
 
-import io
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -113,11 +112,15 @@ def parse_structure(filepath: str | Path) -> ParsedStructure:
 
 def parse_structure_from_bytes(data: bytes, filename: str) -> ParsedStructure:
     """Parse structure from in-memory bytes (for Streamlit uploads)."""
-    ext = Path(filename).suffix.lower()
-    # Write to a temporary path so BioPython can parse it
+    import os
     import tempfile
 
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        tmp.write(data)
-        tmp.flush()
-        return parse_structure(tmp.name)
+    ext = Path(filename).suffix.lower()
+    # Write to a temporary path so BioPython can parse it
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=ext)
+    try:
+        with os.fdopen(tmp_fd, "wb") as tmp:
+            tmp.write(data)
+        return parse_structure(tmp_path)
+    finally:
+        os.unlink(tmp_path)
