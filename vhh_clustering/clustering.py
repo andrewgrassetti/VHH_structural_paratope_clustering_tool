@@ -1,0 +1,146 @@
+"""Dimensionality reduction and clustering of paratope feature vectors.
+
+Supports UMAP, t-SNE, and PCA for projection, and HDBSCAN for clustering.
+GPU acceleration via cuML is attempted first; falls back to CPU
+implementations transparently.
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+import numpy as np
+import pandas as pd
+
+# ---------------------------------------------------------------------------
+# GPU / CPU toggle helpers
+# ---------------------------------------------------------------------------
+_USE_GPU = False
+try:
+    from cuml.cluster import HDBSCAN as cuHDBSCAN
+    from cuml.manifold import UMAP as cuUMAP, TSNE as cuTSNE
+
+    _USE_GPU = True
+except ImportError:
+    pass
+
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
+
+import hdbscan
+import umap
+
+
+def gpu_available() -> bool:
+    """Return ``True`` if RAPIDS cuML was successfully imported."""
+    return _USE_GPU
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def reduce_dimensions(
+    matrix: np.ndarray,
+    method: Literal["umap", "tsne", "pca"] = "umap",
+    n_components: int = 2,
+    random_state: int = 42,
+) -> np.ndarray:
+    """Project *matrix* (n_samples × n_features) to *n_components* dims."""
+    if matrix.shape[0] < 2:
+        return matrix[:, :n_components] if matrix.shape[1] >= n_components else matrix
+
+    # Standardise features
+    scaler = StandardScaler()
+    X = scaler.fit_transform(matrix)
+
+    if method == "umap":
+        n_neighbors = min(15, max(2, X.shape[0] - 1))
+        if _USE_GPU:
+            reducer = cuUMAP(
+                n_components=n_components,
+                n_neighbors=n_neighbors,
+                random_state=random_state,
+            )
+        else:
+            reducer = umap.UMAP(
+                n_components=n_components,
+                n_neighbors=n_neighbors,
+                random_state=random_state,
+            )
+        return reducer.fit_transform(X)
+
+    if method == "tsne":
+        perplexity = min(30.0, max(1.0, (X.shape[0] - 1) / 3.0))
+        if _USE_GPU:
+            reducer = cuTSNE(
+                n_components=n_components,
+                perplexity=perplexity,
+                random_state=random_state,
+            )
+        else:
+            reducer = TSNE(
+                n_components=n_components,
+                perplexity=perplexity,
+                random_state=random_state,
+            )
+        return reducer.fit_transform(X)
+
+    # PCA
+    n_comp = min(n_components, X.shape[0], X.shape[1])
+    pca = PCA(n_components=n_comp, random_state=random_state)
+    return pca.fit_transform(X)
+
+
+def cluster(
+    matrix: np.ndarray,
+    min_cluster_size: int = 3,
+) -> np.ndarray:
+    """Cluster rows of *matrix* using HDBSCAN.
+
+    Returns an integer label array (−1 = noise).
+
+    HDBSCAN is chosen over KMeans because the number of structural
+    paratope bins is not known a priori and HDBSCAN handles noise
+    naturally—important when dealing with diverse predicted structures.
+    """
+    if matrix.shape[0] < min_cluster_size:
+        return np.zeros(matrix.shape[0], dtype=int)
+
+    # Standardise
+    scaler = StandardScaler()
+    X = scaler.fit_transform(matrix)
+
+    if _USE_GPU:
+        clusterer = cuHDBSCAN(min_cluster_size=min_cluster_size)
+    else:
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=min_cluster_size,
+            min_samples=1,
+        )
+    labels = clusterer.fit_predict(X)
+    return np.asarray(labels)
+
+
+def build_result_dataframe(
+    names: list[str],
+    embedding: np.ndarray,
+    labels: np.ndarray,
+    hotspot_scores: list[float],
+    cdr_sequences: list[dict[str, str]],
+) -> pd.DataFrame:
+    """Assemble a tidy DataFrame ready for plotting / export."""
+    df = pd.DataFrame(
+        {
+            "structure": names,
+            "dim1": embedding[:, 0],
+            "dim2": embedding[:, 1] if embedding.shape[1] > 1 else 0.0,
+            "cluster": labels,
+            "hotspot_score": hotspot_scores,
+        }
+    )
+    # Expand CDR sequences
+    for key in ("CDR-H1", "CDR-H2", "CDR-H3"):
+        df[key] = [s.get(key, "") for s in cdr_sequences]
+    return df
