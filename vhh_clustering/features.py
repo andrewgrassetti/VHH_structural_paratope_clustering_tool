@@ -17,6 +17,7 @@ from typing import Sequence
 
 import numpy as np
 from Bio.Data.IUPACData import protein_letters
+from scipy.spatial.distance import cdist, pdist
 
 from vhh_clustering.cdr_annotation import IMGT_CDR_RANGES, AnnotatedResidue
 
@@ -61,7 +62,7 @@ def _hydro_polar_aromatic(seq: str) -> list[float]:
 
 
 def _ca_geometry_stats(
-    residues: Sequence[AnnotatedResidue], radius: float = 10.0
+    residues: Sequence[AnnotatedResidue],
 ) -> list[float]:
     """Local Cα geometry: mean & std of pairwise Cα distances within CDR residues.
 
@@ -78,12 +79,10 @@ def _ca_geometry_stats(
     centroid = coords_arr.mean(axis=0)
     dists_to_centroid = np.linalg.norm(coords_arr - centroid, axis=1)
     # Pairwise distances (upper triangle)
-    from scipy.spatial.distance import pdist
-
-    pw = pdist(coords_arr)
+    pairwise_distances = pdist(coords_arr)
     return [
-        float(np.mean(pw)),
-        float(np.std(pw)),
+        float(np.mean(pairwise_distances)),
+        float(np.std(pairwise_distances)),
         float(np.mean(dists_to_centroid)),
         float(np.std(dists_to_centroid)),  # radius-of-gyration proxy
     ]
@@ -103,14 +102,20 @@ def _sasa_proxy(residues: Sequence[AnnotatedResidue]) -> list[float]:
     if not all_ca:
         return [0.0, 0.0]
     all_ca_arr = np.array(all_ca)
-    exposures = []
+
+    cdr_ca = []
     for ar in residues:
         if ar.region.startswith("CDR") and ar.residue.ca_coord is not None:
-            dists = np.linalg.norm(all_ca_arr - ar.residue.ca_coord, axis=1)
-            neighbours = int(np.sum(dists < 8.0)) - 1  # exclude self
-            exposures.append(1.0 / (neighbours + 1))
-    if not exposures:
+            cdr_ca.append(ar.residue.ca_coord)
+    if not cdr_ca:
         return [0.0, 0.0]
+    cdr_ca_arr = np.array(cdr_ca)
+
+    # Vectorised pairwise distances: shape (n_cdr, n_all)
+    dists = cdist(cdr_ca_arr, all_ca_arr)
+    # Subtract 1 to exclude self (each CDR atom is also in all_ca)
+    neighbour_counts = np.sum(dists < 8.0, axis=1) - 1
+    exposures = 1.0 / (neighbour_counts + 1)
     return [float(np.mean(exposures)), float(np.std(exposures))]
 
 
@@ -142,6 +147,14 @@ def extract_features(
     feature_names: list[str] = []
     parts: list[float] = []
 
+    # Pre-compute CDR sequences once for reuse across feature groups
+    cdr_seqs: dict[str, str] = {
+        cdr_name: "".join(
+            ar.residue.one_letter for ar in annotated if ar.region == cdr_name
+        )
+        for cdr_name in IMGT_CDR_RANGES
+    }
+
     # --- 1. Per-CDR length ---
     for cdr_name in IMGT_CDR_RANGES:
         cdr_res = [ar for ar in annotated if ar.region == cdr_name]
@@ -151,7 +164,7 @@ def extract_features(
     # --- 2. Per-CDR amino-acid composition (20 features × 3 CDRs) ---
     aa_letters = sorted(protein_letters.upper())
     for cdr_name in IMGT_CDR_RANGES:
-        seq = "".join(ar.residue.one_letter for ar in annotated if ar.region == cdr_name)
+        seq = cdr_seqs[cdr_name]
         comp = _aa_composition(seq)
         for aa in aa_letters:
             parts.append(comp.get(aa, 0.0))
@@ -159,7 +172,7 @@ def extract_features(
 
     # --- 3. Charge / electrostatics proxy per CDR ---
     for cdr_name in IMGT_CDR_RANGES:
-        seq = "".join(ar.residue.one_letter for ar in annotated if ar.region == cdr_name)
+        seq = cdr_seqs[cdr_name]
         charge_feats = _charge_features(seq)
         parts.extend(charge_feats)
         feature_names.extend(
@@ -168,7 +181,7 @@ def extract_features(
 
     # --- 4. Hydrophobic / polar / aromatic per CDR ---
     for cdr_name in IMGT_CDR_RANGES:
-        seq = "".join(ar.residue.one_letter for ar in annotated if ar.region == cdr_name)
+        seq = cdr_seqs[cdr_name]
         hpa = _hydro_polar_aromatic(seq)
         parts.extend(hpa)
         feature_names.extend(
@@ -192,12 +205,7 @@ def extract_features(
     parts.append(hs)
     feature_names.append("hotspot_score")
 
-    # --- Per-CDR sequences ---
-    cdr_seqs: dict[str, str] = {}
-    for cdr_name in IMGT_CDR_RANGES:
-        cdr_seqs[cdr_name] = "".join(
-            ar.residue.one_letter for ar in annotated if ar.region == cdr_name
-        )
+    # --- Per-CDR sequences already computed above ---
 
     # --- Residue-level details for output table ---
     residue_details = []
