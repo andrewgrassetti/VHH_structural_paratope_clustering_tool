@@ -1,6 +1,5 @@
 biopython>=1.81
 abnumber>=0.3.4
-numpy>=1.24
 pandas>=1.5
 scikit-learn>=1.2
 scipy>=1.10
@@ -9,3 +8,5 @@ hdbscan>=0.8.33
 plotly>=5.14
 streamlit>=1.28
 pytest>=7.3
+llvmlite==0.41.1
+numba==0.58.1
