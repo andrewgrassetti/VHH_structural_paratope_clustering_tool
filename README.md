@@ -25,8 +25,9 @@ A tool that accepts VHH (nanobody) antibody fragment structures, identifies para
                                                    ▼
                                           ┌────────────────────┐
                                           │ Streamlit UI       │
-                                          │ (3D interactive    │
-                                          │  plot, tables,     │
+                                          │ (2D / 3D           │
+                                          │  interactive plot, │
+                                          │  tables,           │
                                           │  RMSD heatmap,     │
                                           │  download)         │
                                           └────────────────────┘
@@ -41,7 +42,7 @@ A tool that accepts VHH (nanobody) antibody fragment structures, identifies para
 | Feature Extraction | `vhh_clustering/features.py` | Fixed-length vector: CDR composition, SASA proxy, geometry, charge, hotspot score |
 | Clustering | `vhh_clustering/clustering.py` | UMAP/t-SNE/PCA projection + HDBSCAN clustering; GPU fallback |
 | Structural Clustering | `vhh_clustering/structural_clustering.py` | SPACE2-inspired CDR Cα RMSD clustering with Kabsch framework alignment |
-| Streamlit UI | `app.py` | Upload, process, visualise in 3D, and export results |
+| Streamlit UI | `app.py` | Upload, process, visualise (2D / 3D), generate sequences, and export results |
 
 ### Feature vector components
 
