@@ -151,5 +151,7 @@ def _compute_rmsd(coords1, coords2):
     c2 = coords2 - coords2.mean(axis=0)
 
     # Find optimal rotation from c2 to c1
-    rotation, rmsd = Rotation.align_vectors(c1, c2)
-    return rmsd
+    rotation, rssd = Rotation.align_vectors(c1, c2)
+    # rssd is root sum of squared distances; convert to RMSD
+    n = len(c1)
+    return rssd / np.sqrt(n)
