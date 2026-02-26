@@ -22,7 +22,7 @@ from vhh_clustering.clustering import (
 )
 from vhh_clustering.features import extract_features
 from vhh_clustering.parsing import parse_structure_from_bytes
-from vhh_clustering.structure_prediction import immunebuilder_available
+from vhh_clustering.structure_prediction import immunebuilder_available, predict_structure
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -97,8 +97,6 @@ all_details: dict[str, list[dict]] = {}
 
 # --- Predict structures from sequences (NanoBodyBuilder2) ---
 if seq_input and seq_input.strip() and immunebuilder_available():
-    from vhh_clustering.structure_prediction import predict_structure
-
     seq_lines = [l.strip() for l in seq_input.strip().splitlines() if l.strip()]
     seq_progress = st.progress(0, text="Predicting structures from sequences…")
     for idx, line in enumerate(seq_lines):

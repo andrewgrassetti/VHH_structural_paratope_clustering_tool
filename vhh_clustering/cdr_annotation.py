@@ -94,6 +94,8 @@ def _number_with_anarci(sequence: str, scheme: str = "imgt") -> dict[int, int]:
         # ANARCII v2 API
         numberer = _Anarcii()
         results = numberer.number([sequence])
+        if not results:
+            return {}
         key = list(results.keys())[0]
         entry = results[key]
         if entry.get("error") is not None:
@@ -102,11 +104,11 @@ def _number_with_anarci(sequence: str, scheme: str = "imgt") -> dict[int, int]:
 
         # Convert to scheme if needed
         if scheme != entry.get("scheme", "imgt"):
-            numberer.to_scheme(scheme)
-            results = numberer._last_converted_output or results
-            key = list(results.keys())[0]
-            entry = results[key]
-            numbered = entry["numbering"]
+            converted = numberer.to_scheme(scheme)
+            if converted:
+                key = list(converted.keys())[0]
+                entry = converted[key]
+                numbered = entry["numbering"]
     else:
         # Legacy ANARCI v1 API
         results = _anarci_fn([("VHH", sequence)], scheme=scheme, output=False)

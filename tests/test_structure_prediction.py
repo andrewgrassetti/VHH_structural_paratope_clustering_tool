@@ -74,15 +74,17 @@ class TestPredictStructure:
         mock_predictor.predict.return_value = mock_nanobody
         mock_get_predictor.return_value = mock_predictor
 
-        with tempfile.NamedTemporaryFile(suffix=".pdb", delete=False) as tmp:
-            tmp_path = tmp.name
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdb")
+        os.close(tmp_fd)
+        os.unlink(tmp_path)  # remove so predict_structure can create it
 
         try:
             result = predict_structure(EXAMPLE_VHH, output_path=tmp_path)
             assert os.path.exists(tmp_path)
             assert result is not None
         finally:
-            os.unlink(tmp_path)
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
 
 class TestPredictStructures:

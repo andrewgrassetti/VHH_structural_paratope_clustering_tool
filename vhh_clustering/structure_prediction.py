@@ -82,8 +82,8 @@ def predict_structure(sequence: str, output_path: str | Path | None = None) -> P
         return parse_structure(output_path)
 
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdb")
+    os.close(tmp_fd)
     try:
-        os.close(tmp_fd)
         nanobody.save(tmp_path)
         return parse_structure(tmp_path)
     finally:
