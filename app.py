@@ -72,6 +72,7 @@ with st.sidebar.expander("Advanced Parameters"):
         "Dimensionality reduction", ["umap", "tsne", "pca"], index=0
     )
     min_cluster_size = st.slider("HDBSCAN min cluster size", 2, 20, 3)
+    plot_dimensions = st.radio("Plot dimensions", ["2D", "3D"], index=0)
 
 # ---------------------------------------------------------------------------
 # Main workflow
@@ -132,8 +133,9 @@ if uploaded_files:
     scaler = StandardScaler()
     matrix_scaled = scaler.fit_transform(matrix)
 
-    # ----- Dim reduction (3D) -----
-    embedding = reduce_dimensions(matrix_scaled, method=dim_method, n_components=3)
+    # ----- Dim reduction (2D or 3D based on user selection) -----
+    n_components = 3 if plot_dimensions == "3D" else 2
+    embedding = reduce_dimensions(matrix_scaled, method=dim_method, n_components=n_components)
 
     # ----- Clustering (mode-dependent) -----
     if clustering_mode == "Structural (CDR Cα RMSD)":
@@ -152,25 +154,42 @@ if uploaded_files:
     if clustering_mode == "Structural (CDR Cα RMSD)":
         result_df["representative"] = struct_df["representative"].tolist()
 
-    # ----- Interactive 3D scatter plot -----
+    # ----- Interactive scatter plot (2D or 3D) -----
     st.subheader("Cluster Plot")
-    fig = px.scatter_3d(
-        result_df,
-        x="dim1",
-        y="dim2",
-        z="dim3",
-        color=result_df["cluster"].astype(str),
-        hover_data=["structure", "cluster", "hotspot_score", "CDR-H1", "CDR-H2", "CDR-H3"],
-        title=f"Paratope Embedding ({dim_method.upper()})",
-        labels={
-            "dim1": "Dimension 1",
-            "dim2": "Dimension 2",
-            "dim3": "Dimension 3",
-            "color": "Cluster",
-        },
-        height=700,
-    )
-    fig.update_layout(scene_camera={"eye": {"x": 1.5, "y": 1.5, "z": 1.0}})
+    hover_cols = ["structure", "cluster", "hotspot_score", "CDR-H1", "CDR-H2", "CDR-H3"]
+    if plot_dimensions == "3D":
+        fig = px.scatter_3d(
+            result_df,
+            x="dim1",
+            y="dim2",
+            z="dim3",
+            color=result_df["cluster"].astype(str),
+            hover_data=hover_cols,
+            title=f"Paratope Embedding ({dim_method.upper()})",
+            labels={
+                "dim1": "Dimension 1",
+                "dim2": "Dimension 2",
+                "dim3": "Dimension 3",
+                "color": "Cluster",
+            },
+            height=700,
+        )
+        fig.update_layout(scene_camera={"eye": {"x": 1.5, "y": 1.5, "z": 1.0}})
+    else:
+        fig = px.scatter(
+            result_df,
+            x="dim1",
+            y="dim2",
+            color=result_df["cluster"].astype(str),
+            hover_data=hover_cols,
+            title=f"Paratope Embedding ({dim_method.upper()})",
+            labels={
+                "dim1": "Dimension 1",
+                "dim2": "Dimension 2",
+                "color": "Cluster",
+            },
+            height=700,
+        )
     st.plotly_chart(fig, use_container_width=True)
 
     # ----- RMSD heatmap (structural mode only) -----
