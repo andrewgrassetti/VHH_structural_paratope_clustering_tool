@@ -1,65 +1,55 @@
-"""Tests for the clustering module."""
+"""Unit tests for dimensionality reduction and clustering."""
+
+from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from vhh_paratope_clustering.clustering import cluster_paratopes
+from vhh_clustering.clustering import cluster, reduce_dimensions, build_result_dataframe
 
 
-class TestClusterParatopes:
-    """Tests for cluster_paratopes function."""
+class TestReduceDimensions:
+    @pytest.fixture()
+    def sample_matrix(self) -> np.ndarray:
+        rng = np.random.default_rng(42)
+        return rng.standard_normal((10, 20))
 
-    def _make_distance_matrix(self):
-        """Create a test distance matrix with clear cluster structure."""
-        # Two clusters: {0,1} close together, {2,3} close together
-        dm = np.array([
-            [0.0, 0.5, 5.0, 5.5],
-            [0.5, 0.0, 5.5, 5.0],
-            [5.0, 5.5, 0.0, 0.3],
-            [5.5, 5.0, 0.3, 0.0],
-        ])
-        return dm
+    @pytest.mark.parametrize("method", ["umap", "tsne", "pca"])
+    def test_output_shape(self, sample_matrix: np.ndarray, method: str) -> None:
+        result = reduce_dimensions(sample_matrix, method=method, n_components=2)
+        assert result.shape == (10, 2)
 
-    def test_hierarchical_two_clusters(self):
-        """Test hierarchical clustering finds two clusters."""
-        dm = self._make_distance_matrix()
-        labels = cluster_paratopes(dm, method="hierarchical", threshold=2.0)
+    def test_single_sample(self) -> None:
+        X = np.ones((1, 5))
+        result = reduce_dimensions(X, method="pca", n_components=2)
+        assert result.shape[0] == 1
 
-        assert len(labels) == 4
-        # Items 0 and 1 should be in the same cluster
-        assert labels[0] == labels[1]
-        # Items 2 and 3 should be in the same cluster
-        assert labels[2] == labels[3]
-        # The two groups should be in different clusters
-        assert labels[0] != labels[2]
 
-    def test_agglomerative_two_clusters(self):
-        """Test agglomerative clustering with n_clusters."""
-        dm = self._make_distance_matrix()
-        labels = cluster_paratopes(dm, method="agglomerative", n_clusters=2)
+class TestCluster:
+    def test_cluster_labels_shape(self) -> None:
+        rng = np.random.default_rng(0)
+        X = rng.standard_normal((15, 10))
+        labels = cluster(X, min_cluster_size=3)
+        assert labels.shape == (15,)
 
-        assert len(labels) == 4
-        assert labels[0] == labels[1]
-        assert labels[2] == labels[3]
-        assert labels[0] != labels[2]
+    def test_small_input(self) -> None:
+        X = np.ones((2, 5))
+        labels = cluster(X, min_cluster_size=3)
+        assert len(labels) == 2
 
-    def test_agglomerative_with_threshold(self):
-        """Test agglomerative clustering with distance threshold."""
-        dm = self._make_distance_matrix()
-        labels = cluster_paratopes(dm, method="agglomerative", threshold=2.0)
 
-        assert len(labels) == 4
-        assert labels[0] == labels[1]
-        assert labels[2] == labels[3]
-
-    def test_single_element(self):
-        """Test clustering with a single element."""
-        dm = np.array([[0.0]])
-        labels = cluster_paratopes(dm, method="hierarchical", threshold=2.0)
-        assert len(labels) == 1
-
-    def test_unknown_method_raises(self):
-        """Test that an unknown method raises ValueError."""
-        dm = np.array([[0.0, 1.0], [1.0, 0.0]])
-        with pytest.raises(ValueError, match="Unknown clustering method"):
-            cluster_paratopes(dm, method="invalid_method")
+class TestBuildResultDataframe:
+    def test_columns(self) -> None:
+        df = build_result_dataframe(
+            names=["a", "b"],
+            embedding=np.array([[1.0, 2.0], [3.0, 4.0]]),
+            labels=np.array([0, 1]),
+            hotspot_scores=[0.5, 0.8],
+            cdr_sequences=[
+                {"CDR-H1": "AA", "CDR-H2": "BB", "CDR-H3": "CC"},
+                {"CDR-H1": "DD", "CDR-H2": "EE", "CDR-H3": "FF"},
+            ],
+        )
+        assert "structure" in df.columns
+        assert "cluster" in df.columns
+        assert len(df) == 2
