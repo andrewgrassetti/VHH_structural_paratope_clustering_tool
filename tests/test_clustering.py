@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 from sklearn.preprocessing import StandardScaler
 
-from vhh_clustering.clustering import cluster, reduce_dimensions, build_result_dataframe
+from vhh_clustering.clustering import cluster, reduce_dimensions, build_result_dataframe, export_csv
 
 
 class TestReduceDimensions:
@@ -85,3 +86,54 @@ class TestBuildResultDataframe:
         assert "dim3" in df.columns
         assert df.loc[0, "dim3"] == pytest.approx(3.0)
         assert df.loc[1, "dim3"] == pytest.approx(6.0)
+
+
+class TestExportCsv:
+    @pytest.fixture()
+    def sample_df(self) -> pd.DataFrame:
+        return build_result_dataframe(
+            names=["struct_a", "struct_b"],
+            embedding=np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+            labels=np.array([0, 1]),
+            hotspot_scores=[0.5, 0.8],
+            cdr_sequences=[
+                {"CDR-H1": "AA", "CDR-H2": "BB", "CDR-H3": "CC"},
+                {"CDR-H1": "DD", "CDR-H2": "EE", "CDR-H3": "FF"},
+            ],
+        )
+
+    def test_creates_csv_file(self, sample_df: pd.DataFrame, tmp_path) -> None:
+        out = export_csv(sample_df, tmp_path / "out.csv")
+        assert out.exists()
+        assert out.suffix == ".csv"
+
+    def test_csv_content_matches(self, sample_df: pd.DataFrame, tmp_path) -> None:
+        export_csv(sample_df, tmp_path / "out.csv")
+        loaded = pd.read_csv(tmp_path / "out.csv")
+        assert list(loaded.columns) == list(sample_df.columns)
+        assert len(loaded) == len(sample_df)
+        assert loaded["structure"].tolist() == ["struct_a", "struct_b"]
+        assert loaded["cluster"].tolist() == [0, 1]
+
+    def test_no_index_by_default(self, sample_df: pd.DataFrame, tmp_path) -> None:
+        export_csv(sample_df, tmp_path / "out.csv")
+        loaded = pd.read_csv(tmp_path / "out.csv")
+        assert "Unnamed: 0" not in loaded.columns
+
+    def test_include_index(self, sample_df: pd.DataFrame, tmp_path) -> None:
+        export_csv(sample_df, tmp_path / "out.csv", include_index=True)
+        loaded = pd.read_csv(tmp_path / "out.csv")
+        assert "Unnamed: 0" in loaded.columns or loaded.columns[0] != "structure"
+
+    def test_creates_parent_directories(self, sample_df: pd.DataFrame, tmp_path) -> None:
+        nested = tmp_path / "a" / "b" / "results.csv"
+        out = export_csv(sample_df, nested)
+        assert out.exists()
+
+    def test_returns_resolved_path(self, sample_df: pd.DataFrame, tmp_path) -> None:
+        out = export_csv(sample_df, tmp_path / "out.csv")
+        assert out.is_absolute()
+
+    def test_string_path_accepted(self, sample_df: pd.DataFrame, tmp_path) -> None:
+        out = export_csv(sample_df, str(tmp_path / "out.csv"))
+        assert out.exists()

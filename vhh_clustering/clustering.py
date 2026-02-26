@@ -3,11 +3,14 @@
 Supports UMAP, t-SNE, and PCA for projection, and HDBSCAN for clustering.
 GPU acceleration via cuML is attempted first; falls back to CPU
 implementations transparently.
+
+Includes a helper to export clustering results to CSV.
 """
 
 from __future__ import annotations
 
-from typing import Literal
+from pathlib import Path
+from typing import Literal, Union
 
 import numpy as np
 import pandas as pd
@@ -145,3 +148,34 @@ def build_result_dataframe(
     for key in ("CDR-H1", "CDR-H2", "CDR-H3"):
         df[key] = [s.get(key, "") for s in cdr_sequences]
     return df
+
+
+def export_csv(
+    result_df: pd.DataFrame,
+    path: Union[str, Path],
+    *,
+    include_index: bool = False,
+) -> Path:
+    """Write a clustering result DataFrame to a CSV file.
+
+    Parameters
+    ----------
+    result_df:
+        DataFrame returned by :func:`build_result_dataframe` (or any
+        DataFrame containing clustering results).
+    path:
+        Destination file path.  Parent directories are created
+        automatically if they do not exist.
+    include_index:
+        Whether to write the DataFrame index as a column. Defaults to
+        ``False``.
+
+    Returns
+    -------
+    Path
+        The resolved path of the written CSV file.
+    """
+    dest = Path(path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    result_df.to_csv(dest, index=include_index)
+    return dest.resolve()
