@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import json
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -268,8 +269,6 @@ with tab_seqgen:
         st.dataframe(summary_df, use_container_width=True)
 
         # Mutation count distribution chart
-        from collections import Counter
-
         mut_counts = Counter(len(m.mutations) for m in mutants)
         dist_df = pd.DataFrame(
             sorted(mut_counts.items()), columns=["Mutations", "Count"]

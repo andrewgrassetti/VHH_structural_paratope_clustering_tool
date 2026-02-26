@@ -19,7 +19,6 @@ from typing import Sequence
 
 import numpy as np
 import pandas as pd
-from scipy.spatial.distance import squareform
 from sklearn.cluster import AgglomerativeClustering
 
 from vhh_clustering.cdr_annotation import AnnotatedResidue
@@ -59,6 +58,37 @@ def _extract_ca_coords(
     return np.array(coords)
 
 
+def _kabsch_transform(
+    mobile: np.ndarray, target: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute the Kabsch rotation and translation.
+
+    Both arrays must have the same shape ``(N, 3)``.  Returns
+    ``(R, centroid_mobile, centroid_target)`` so the transform can be
+    applied to arbitrary point sets as::
+
+        aligned = (pts - centroid_mobile) @ R.T + centroid_target
+    """
+    assert mobile.shape == target.shape and mobile.ndim == 2
+    n = mobile.shape[0]
+    if n == 0:
+        return np.eye(3), np.zeros(3), np.zeros(3)
+
+    centroid_m = mobile.mean(axis=0)
+    centroid_t = target.mean(axis=0)
+    m_centered = mobile - centroid_m
+    t_centered = target - centroid_t
+
+    H = m_centered.T @ t_centered
+    U, _S, Vt = np.linalg.svd(H)
+
+    d = np.linalg.det(Vt.T @ U.T)
+    sign_matrix = np.diag([1.0, 1.0, np.sign(d)])
+    R = Vt.T @ sign_matrix @ U.T
+
+    return R, centroid_m, centroid_t
+
+
 def _kabsch_align(
     mobile: np.ndarray, target: np.ndarray
 ) -> np.ndarray:
@@ -67,28 +97,8 @@ def _kabsch_align(
     Both arrays must have the same shape ``(N, 3)``.  Returns the
     rotated + translated *mobile* coordinates.
     """
-    assert mobile.shape == target.shape and mobile.ndim == 2
-    n = mobile.shape[0]
-    if n == 0:
-        return mobile.copy()
-
-    # Centre both point sets
-    centroid_m = mobile.mean(axis=0)
-    centroid_t = target.mean(axis=0)
-    m_centered = mobile - centroid_m
-    t_centered = target - centroid_t
-
-    # Covariance matrix
-    H = m_centered.T @ t_centered
-    U, _S, Vt = np.linalg.svd(H)
-
-    # Correct for reflection
-    d = np.linalg.det(Vt.T @ U.T)
-    sign_matrix = np.diag([1.0, 1.0, np.sign(d)])
-    R = Vt.T @ sign_matrix @ U.T
-
-    aligned = (m_centered @ R.T) + centroid_t
-    return aligned
+    R, centroid_m, centroid_t = _kabsch_transform(mobile, target)
+    return (mobile - centroid_m) @ R.T + centroid_t
 
 
 def _ca_rmsd(coords1: np.ndarray, coords2: np.ndarray) -> float:
@@ -146,21 +156,10 @@ def pairwise_cdr_rmsd(
             cdr_j_t = cdr_j[:min_cdr]
 
             # Compute alignment transform from framework atoms
-            aligned_fw_j = _kabsch_align(fw_j_t, fw_i_t)
+            R, centroid_m, centroid_t = _kabsch_transform(fw_j_t, fw_i_t)
 
-            # Apply the same transform to CDR atoms:
-            # Reconstruct the transform components
-            centroid_m = fw_j_t.mean(axis=0)
-            centroid_t = fw_i_t.mean(axis=0)
-            m_centered = fw_j_t - centroid_m
-            t_centered = fw_i_t - centroid_t
-            H = m_centered.T @ t_centered
-            U, _S, Vt = np.linalg.svd(H)
-            d = np.linalg.det(Vt.T @ U.T)
-            sign_matrix = np.diag([1.0, 1.0, np.sign(d)])
-            R = Vt.T @ sign_matrix @ U.T
-
-            aligned_cdr_j = ((cdr_j_t - centroid_m) @ R.T) + centroid_t
+            # Apply the same transform to CDR atoms
+            aligned_cdr_j = (cdr_j_t - centroid_m) @ R.T + centroid_t
 
             d_val = _ca_rmsd(cdr_i_t, aligned_cdr_j)
             dist_matrix[i, j] = d_val
