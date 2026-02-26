@@ -146,7 +146,7 @@ def pairwise_cdr_rmsd(
             min_cdr = min(len(cdr_i), len(cdr_j))
 
             if min_fw < 3 or min_cdr < 1:
-                dist_matrix[i, j] = dist_matrix[j, i] = 0.0
+                dist_matrix[i, j] = dist_matrix[j, i] = np.inf
                 continue
 
             # Truncate to common length (handles minor length differences)

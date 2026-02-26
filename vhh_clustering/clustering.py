@@ -26,7 +26,6 @@ except ImportError:
 
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-from sklearn.preprocessing import StandardScaler
 
 import hdbscan
 import umap
@@ -44,16 +43,17 @@ def gpu_available() -> bool:
 def reduce_dimensions(
     matrix: np.ndarray,
     method: Literal["umap", "tsne", "pca"] = "umap",
-    n_components: int = 2,
+    n_components: int = 3,
     random_state: int = 42,
 ) -> np.ndarray:
-    """Project *matrix* (n_samples × n_features) to *n_components* dims."""
+    """Project *matrix* (n_samples × n_features) to *n_components* dims.
+
+    The caller is responsible for standardising *matrix* beforehand.
+    """
     if matrix.shape[0] < 2:
         return matrix[:, :n_components] if matrix.shape[1] >= n_components else matrix
 
-    # Standardise features
-    scaler = StandardScaler()
-    X = scaler.fit_transform(matrix)
+    X = matrix
 
     if method == "umap":
         n_neighbors = min(15, max(2, X.shape[0] - 1))
@@ -104,13 +104,13 @@ def cluster(
     HDBSCAN is chosen over KMeans because the number of structural
     paratope bins is not known a priori and HDBSCAN handles noise
     naturally—important when dealing with diverse predicted structures.
+
+    The caller is responsible for standardising *matrix* beforehand.
     """
     if matrix.shape[0] < min_cluster_size:
         return np.zeros(matrix.shape[0], dtype=int)
 
-    # Standardise
-    scaler = StandardScaler()
-    X = scaler.fit_transform(matrix)
+    X = matrix
 
     if _USE_GPU:
         clusterer = cuHDBSCAN(min_cluster_size=min_cluster_size)
@@ -136,6 +136,7 @@ def build_result_dataframe(
             "structure": names,
             "dim1": embedding[:, 0],
             "dim2": embedding[:, 1] if embedding.shape[1] > 1 else 0.0,
+            "dim3": embedding[:, 2] if embedding.shape[1] > 2 else 0.0,
             "cluster": labels,
             "hotspot_score": hotspot_scores,
         }
