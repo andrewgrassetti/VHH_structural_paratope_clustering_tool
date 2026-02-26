@@ -7,6 +7,9 @@ Chothia, Kabat, Martin, and Aho numbering schemes.
 
 VHH molecules lack a light chain, so only the heavy-chain CDRs (CDR-H1,
 CDR-H2, CDR-H3) are annotated.  IMGT boundaries applied:
+Uses IMGT numbering via the ``abnumber`` library.  VHH molecules lack a
+light chain, so only the heavy-chain CDRs (CDR-H1, CDR-H2, CDR-H3) are
+annotated.  IMGT boundaries applied:
 
 * CDR-H1 : positions 27-38
 * CDR-H2 : positions 56-65
@@ -21,6 +24,7 @@ References
 ----------
 Dunbar, J. and Deane, C.M., 2016. ANARCI: antigen receptor numbering and
 receptor classification. *Bioinformatics*, 32(2), pp.298-300.
+Framework regions are everything else.
 """
 
 from __future__ import annotations
@@ -64,6 +68,14 @@ except ImportError:
             _BACKEND = "abnumber"
         except ImportError:
             pass
+# Try to use abnumber for accurate IMGT renumbering; fall back to a
+# simple positional heuristic if it is not installed or numbering fails.
+try:
+    from abnumber import Chain as AbChain
+
+    _HAS_ABNUMBER = True
+except ImportError:
+    _HAS_ABNUMBER = False
 
 
 @dataclass
@@ -165,6 +177,30 @@ def annotate_cdrs(structure: ParsedStructure) -> list[AnnotatedResidue]:
         elif _BACKEND == "abnumber":
             imgt_positions = _number_with_abnumber(structure.sequence)
         # else: positional fallback (imgt_positions stays empty)
+def annotate_cdrs(structure: ParsedStructure) -> list[AnnotatedResidue]:
+    """Annotate residues with CDR regions using IMGT numbering.
+
+    Attempts ``abnumber`` renumbering first; falls back to a sequential
+    positional approximation when renumbering fails (common with
+    predicted structures that have non-standard sequences).
+    """
+    annotated: list[AnnotatedResidue] = []
+    imgt_positions: dict[int, int] = {}  # original index -> IMGT position
+
+    if _HAS_ABNUMBER and structure.sequence:
+        try:
+            chain = AbChain(
+                structure.sequence, scheme="imgt", chain_type="H"
+            )
+            # Build mapping: 0-based index in sequence -> IMGT position int
+            idx = 0
+            for pos, aa in chain:
+                if aa != "-":
+                    imgt_positions[idx] = pos.number
+                    idx += 1
+        except Exception:
+            # Renumbering failed; proceed with fallback
+            imgt_positions = {}
 
     for i, res in enumerate(structure.residues):
         if i in imgt_positions:
