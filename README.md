@@ -2,6 +2,57 @@
 
 A tool that accepts VHH (nanobody) antibody fragment structures, identifies paratope residues, computes feature vectors, and clusters them using dimensionality reduction.
 
+## OPIG Tool Integration
+
+This project leverages tools from the [Oxford Protein Informatics Group (OPIG)](http://opig.stats.ox.ac.uk/):
+
+### [ANARCI](https://github.com/oxpig/ANARCI) — Antibody Numbering
+
+ANARCI (Antibody Numbering and Antigen Receptor ClassIfication) is used as the
+**primary CDR annotation backend** for IMGT numbering of VHH sequences.  It
+supports IMGT, Chothia, Kabat, Martin, and Aho numbering schemes.
+
+> Dunbar, J. and Deane, C.M., 2016. ANARCI: antigen receptor numbering and
+> receptor classification. *Bioinformatics*, 32(2), pp.298-300.
+
+### [ImmuneBuilder / NanoBodyBuilder2](https://github.com/oxpig/ImmuneBuilder) — Structure Prediction
+
+NanoBodyBuilder2 enables a **sequence-first workflow**: users can provide VHH
+amino-acid sequences and the tool will predict 3D structures on the fly.
+NanoBodyBuilder2 achieves state-of-the-art accuracy for nanobody CDR loop
+prediction.
+
+> Abanades, B., Wong, W.K., Boyles, F., Georges, G., Bujotzek, A. and Deane,
+> C.M., 2023. ImmuneBuilder: Deep-Learning models for predicting the structures
+> of immune proteins. *Communications Biology*, 6(1), p.575.
+
+## Architecture
+
+```
+┌──────────────────┐
+│  Sequence Input   │──── NanoBodyBuilder2 (OPIG) ────┐
+│  (optional)       │                                  │
+└──────────────────┘                                   ▼
+┌──────────────┐     ┌────────────────┐     ┌───────────────────┐
+│  Structure   │────▶│  CDR Annotation│────▶│ Feature Extraction│
+│  Parsing     │     │  ANARCI (OPIG) │     │ (composition,     │
+│  (PDB/mmCIF) │     │  / abnumber    │     │  geometry, SASA,  │
+│              │     │                │     │  electrostatics)  │
+└──────────────┘     └────────────────┘     └────────┬──────────┘
+                                                     │
+                                                     ▼
+                                            ┌────────────────────┐
+                                            │ Dim. Reduction     │
+                                            │ (UMAP/t-SNE/PCA)  │
+                                            │ + HDBSCAN Cluster  │
+                                            └────────┬───────────┘
+                                                     │
+                                                     ▼
+                                            ┌────────────────────┐
+                                            │ Streamlit UI       │
+                                            │ (interactive plot, │
+                                            │  tables, download) │
+                                            └────────────────────┘
 ## Architecture
 
 ```
@@ -39,6 +90,11 @@ A tool that accepts VHH (nanobody) antibody fragment structures, identifies para
 | Module | File | Purpose |
 |--------|------|---------|
 | Parsing | `vhh_clustering/parsing.py` | Read PDB/mmCIF → `ParsedStructure` (residues, coords, B-factors) |
+| CDR Annotation | `vhh_clustering/cdr_annotation.py` | IMGT numbering via **ANARCI** (OPIG); fallback to `abnumber` |
+| Structure Prediction | `vhh_clustering/structure_prediction.py` | Sequence → structure via **NanoBodyBuilder2** (OPIG ImmuneBuilder) |
+| Feature Extraction | `vhh_clustering/features.py` | Fixed-length vector: CDR composition, SASA proxy, geometry, charge, hotspot score |
+| Clustering | `vhh_clustering/clustering.py` | UMAP/t-SNE/PCA projection + HDBSCAN clustering; GPU fallback |
+| Streamlit UI | `app.py` | Upload structures or paste sequences, process, visualise, and export results |
 | CDR Annotation | `vhh_clustering/cdr_annotation.py` | IMGT numbering via `abnumber`; CDR-H1/H2/H3 classification |
 | Feature Extraction | `vhh_clustering/features.py` | Fixed-length vector: CDR composition, SASA proxy, geometry, charge, hotspot score |
 | Clustering | `vhh_clustering/clustering.py` | UMAP/t-SNE/PCA projection + HDBSCAN clustering; GPU fallback |
@@ -55,6 +111,7 @@ A tool that accepts VHH (nanobody) antibody fragment structures, identifies para
 - **SASA proxy** – Cα neighbour-count exposure estimate for CDR residues
 - **Hotspot score** – weighted sum of CDR lengths (CDR-H3 weighted highest, reflecting its dominant role in antigen binding)
 
+### Clustering rationale
 ### Clustering methods
 
 #### Feature-based (HDBSCAN)
@@ -103,6 +160,25 @@ python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # .venv\Scripts\activate   # Windows
 
+# Install core dependencies
+pip install -r requirements.txt
+```
+
+### Install OPIG tools (recommended)
+
+```bash
+# ANARCI – antibody numbering (requires HMMER)
+conda install -c bioconda hmmer=3.3.2 -y  # or install HMMER manually
+pip install ANARCI
+
+# ImmuneBuilder – NanoBodyBuilder2 for structure prediction (requires PyTorch)
+pip install ImmuneBuilder
+```
+
+Both OPIG tools are optional: the application gracefully falls back to
+`abnumber` for numbering and disables the sequence input tab when
+ImmuneBuilder is not available.
+
 # Install dependencies
 pip install -r requirements.txt
 ```
@@ -113,6 +189,9 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+Then open the URL shown in the terminal (typically `http://localhost:8501`),
+upload VHH structure files (`.pdb` / `.cif`) and/or paste VHH sequences,
+and explore the results.
 Then open the URL shown in the terminal (typically `http://localhost:8501`), upload VHH structure files (`.pdb` / `.cif`), and explore the results.
 
 The app has two tabs:
@@ -140,11 +219,17 @@ CPU fallback is always available—no GPU is required.
 
 ## Numbering Scheme
 
+The tool uses **IMGT numbering** for CDR boundary detection:
 The MVP uses **IMGT numbering** via the `abnumber` library for CDR boundary detection:
 - CDR-H1: positions 27–38
 - CDR-H2: positions 56–65
 - CDR-H3: positions 105–117
 
+The numbering backend is selected automatically:
+
+1. **ANARCI** (preferred) – OPIG's canonical antibody numbering tool
+2. **abnumber** – lightweight fallback
+3. **Positional** – uses raw residue sequence numbers when neither library is available
 When `abnumber` renumbering fails (common with some predicted structures), the tool falls back to using residue sequence numbers from the input file.
 
 ## Assumptions & Extension Points
@@ -152,6 +237,10 @@ When `abnumber` renumbering fails (common with some predicted structures), the t
 ### Assumptions (MVP)
 - Input structures are single-chain VHH (heavy chain only)
 - First model in each file is used
+- Predicted structures (AlphaFold, Boltz, NanoBodyBuilder2) are provided as PDB/mmCIF files or generated from sequence
+- B-factor column stores pLDDT for predicted structures
+
+### Future extensions
 - Predicted structures (AlphaFold, Boltz) are provided as PDB/mmCIF files
 - B-factor column stores pLDDT for predicted structures
 

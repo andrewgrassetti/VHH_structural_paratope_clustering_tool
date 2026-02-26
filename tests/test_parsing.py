@@ -111,3 +111,9 @@ class TestCDRAnnotation:
         assert _classify_imgt_position(1) == "framework"
         assert _classify_imgt_position(50) == "framework"
         assert _classify_imgt_position(130) == "framework"
+
+    def test_numbering_backend_returns_string(self) -> None:
+        from vhh_clustering.cdr_annotation import numbering_backend
+
+        backend = numbering_backend()
+        assert backend in ("anarci", "abnumber", "positional")
