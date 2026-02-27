@@ -111,16 +111,23 @@ def parse_structure(filepath: str | Path) -> ParsedStructure:
 
 
 def parse_structure_from_bytes(data: bytes, filename: str) -> ParsedStructure:
-    """Parse structure from in-memory bytes (for Streamlit uploads)."""
+    """Parse structure from in-memory bytes (for Streamlit uploads).
+
+    The returned structure's ``name`` is derived from the original
+    *filename* (stem without extension), **not** the temporary path.
+    """
     import os
     import tempfile
 
+    original_name = Path(filename).stem
     ext = Path(filename).suffix.lower()
     # Write to a temporary path so BioPython can parse it
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=ext)
     try:
         with os.fdopen(tmp_fd, "wb") as tmp:
             tmp.write(data)
-        return parse_structure(tmp_path)
+        parsed = parse_structure(tmp_path)
+        parsed.name = original_name
+        return parsed
     finally:
         os.unlink(tmp_path)

@@ -156,7 +156,7 @@ if uploaded_files:
 
     # ----- Interactive scatter plot (2D or 3D) -----
     st.subheader("Cluster Plot")
-    hover_cols = ["structure", "cluster", "hotspot_score", "CDR-H1", "CDR-H2", "CDR-H3"]
+    hover_cols = ["structure", "tag", "cluster", "hotspot_score", "CDR-H1", "CDR-H2", "CDR-H3"]
     if plot_dimensions == "3D":
         fig = px.scatter_3d(
             result_df,
@@ -227,9 +227,9 @@ if uploaded_files:
         )
     st.dataframe(pd.DataFrame(summary_rows), use_container_width=True)
 
-    # ----- Results table -----
+    # ----- Results table (editable so users can modify tags) -----
     st.subheader("Summary Table")
-    st.dataframe(result_df, use_container_width=True)
+    result_df = st.data_editor(result_df, use_container_width=True, num_rows="fixed")
 
     # ----- Per-structure residue details -----
     st.subheader("Per-Structure Residue Details")

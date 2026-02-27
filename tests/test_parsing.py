@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vhh_clustering.parsing import Residue, ParsedStructure, parse_structure
+from vhh_clustering.parsing import Residue, ParsedStructure, parse_structure, parse_structure_from_bytes
 
 # ---------------------------------------------------------------------------
 # Helpers – minimal valid PDB content
@@ -67,6 +67,16 @@ class TestParsing:
         p.write_text("junk")
         with pytest.raises(ValueError, match="Unsupported"):
             parse_structure(p)
+
+    def test_parse_from_bytes_preserves_filename(self) -> None:
+        """parse_structure_from_bytes should use the original filename, not the temp path."""
+        result = parse_structure_from_bytes(MINIMAL_PDB.encode(), "my_nanobody.pdb")
+        assert result.name == "my_nanobody"
+
+    def test_parse_from_bytes_preserves_residues(self) -> None:
+        result = parse_structure_from_bytes(MINIMAL_PDB.encode(), "sample.pdb")
+        assert len(result.residues) == 3
+        assert result.sequence == "GAR"
 
 
 # ---------------------------------------------------------------------------
