@@ -164,6 +164,10 @@ def build_result_dataframe(
     """
     if tags is None:
         tags = [extract_tag(n) for n in names]
+    if len(tags) != len(names):
+        raise ValueError(
+            f"Length of tags ({len(tags)}) must match names ({len(names)})"
+        )
 
     df = pd.DataFrame(
         {
