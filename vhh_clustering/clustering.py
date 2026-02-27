@@ -126,17 +126,49 @@ def cluster(
     return np.asarray(labels)
 
 
+def extract_tag(name: str) -> str:
+    """Derive a default tag from a structure name.
+
+    The tag is everything after the first underscore in *name*.  If no
+    underscore is present the tag is an empty string.
+
+    Examples
+    --------
+    >>> extract_tag("antibody_targetX")
+    'targetX'
+    >>> extract_tag("a_b_c")
+    'b_c'
+    >>> extract_tag("mystructure")
+    ''
+    """
+    if "_" in name:
+        return name.split("_", 1)[1]
+    return ""
+
+
 def build_result_dataframe(
     names: list[str],
     embedding: np.ndarray,
     labels: np.ndarray,
     hotspot_scores: list[float],
     cdr_sequences: list[dict[str, str]],
+    tags: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Assemble a tidy DataFrame ready for plotting / export."""
+    """Assemble a tidy DataFrame ready for plotting / export.
+
+    Parameters
+    ----------
+    tags:
+        Optional per-structure tag strings.  When *None*, tags are
+        derived automatically from *names* using :func:`extract_tag`.
+    """
+    if tags is None:
+        tags = [extract_tag(n) for n in names]
+
     df = pd.DataFrame(
         {
             "structure": names,
+            "tag": tags,
             "dim1": embedding[:, 0],
             "dim2": embedding[:, 1] if embedding.shape[1] > 1 else 0.0,
             "dim3": embedding[:, 2] if embedding.shape[1] > 2 else 0.0,

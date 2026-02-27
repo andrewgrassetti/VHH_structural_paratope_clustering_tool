@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from sklearn.preprocessing import StandardScaler
 
-from vhh_clustering.clustering import cluster, reduce_dimensions, build_result_dataframe, export_csv
+from vhh_clustering.clustering import cluster, reduce_dimensions, build_result_dataframe, export_csv, extract_tag
 
 
 class TestReduceDimensions:
@@ -86,6 +86,55 @@ class TestBuildResultDataframe:
         assert "dim3" in df.columns
         assert df.loc[0, "dim3"] == pytest.approx(3.0)
         assert df.loc[1, "dim3"] == pytest.approx(6.0)
+
+    def test_tag_column_auto(self) -> None:
+        """Tags are auto-derived from names when not supplied."""
+        df = build_result_dataframe(
+            names=["antibody_targetX", "plain"],
+            embedding=np.array([[1.0, 2.0], [3.0, 4.0]]),
+            labels=np.array([0, 1]),
+            hotspot_scores=[0.5, 0.8],
+            cdr_sequences=[
+                {"CDR-H1": "AA", "CDR-H2": "BB", "CDR-H3": "CC"},
+                {"CDR-H1": "DD", "CDR-H2": "EE", "CDR-H3": "FF"},
+            ],
+        )
+        assert "tag" in df.columns
+        assert df.loc[0, "tag"] == "targetX"
+        assert df.loc[1, "tag"] == ""
+
+    def test_tag_column_explicit(self) -> None:
+        """Explicit tags override auto-derived ones."""
+        df = build_result_dataframe(
+            names=["antibody_targetX", "plain"],
+            embedding=np.array([[1.0, 2.0], [3.0, 4.0]]),
+            labels=np.array([0, 1]),
+            hotspot_scores=[0.5, 0.8],
+            cdr_sequences=[
+                {"CDR-H1": "AA", "CDR-H2": "BB", "CDR-H3": "CC"},
+                {"CDR-H1": "DD", "CDR-H2": "EE", "CDR-H3": "FF"},
+            ],
+            tags=["custom1", "custom2"],
+        )
+        assert df.loc[0, "tag"] == "custom1"
+        assert df.loc[1, "tag"] == "custom2"
+
+
+class TestExtractTag:
+    def test_single_underscore(self) -> None:
+        assert extract_tag("antibody_targetX") == "targetX"
+
+    def test_multiple_underscores(self) -> None:
+        assert extract_tag("a_b_c") == "b_c"
+
+    def test_no_underscore(self) -> None:
+        assert extract_tag("mystructure") == ""
+
+    def test_trailing_underscore(self) -> None:
+        assert extract_tag("name_") == ""
+
+    def test_leading_underscore(self) -> None:
+        assert extract_tag("_tag") == "tag"
 
 
 class TestExportCsv:
